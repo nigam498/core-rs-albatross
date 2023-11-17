@@ -4989,6 +4989,7 @@ dependencies = [
  "nimiq-genesis",
  "nimiq-hash",
  "nimiq-keys",
+ "nimiq-log",
  "nimiq-pedersen-generators",
  "nimiq-primitives",
  "nimiq-serde",
@@ -5002,6 +5003,7 @@ dependencies = [
  "rayon",
  "serde",
  "tracing",
+ "tracing-subscriber 0.3.17",
 ]
 
 [[package]]
