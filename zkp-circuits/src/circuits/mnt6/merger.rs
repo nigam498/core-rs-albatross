@@ -9,7 +9,10 @@ use ark_r1cs_std::{
     prelude::{AllocVar, Boolean, EqGadget},
     uint8::UInt8,
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_relations::{
+    lc,
+    r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError, Variable},
+};
 use nimiq_zkp_primitives::pedersen_parameters_mnt6;
 use rand::Rng;
 
@@ -215,6 +218,10 @@ impl ConstraintSynthesizer<MNT6Fq> for MergerCircuit {
             &proof_macro_block_wrapper_var,
         )?
         .enforce_equal(&Boolean::constant(true))?;
+
+        for i in 0..cs.num_instance_variables() {
+            cs.enforce_constraint(lc!() + Variable::Instance(i), lc!(), lc!())?;
+        }
 
         Ok(())
     }

@@ -9,7 +9,10 @@ use ark_r1cs_std::{
     prelude::{AllocVar, Boolean, EqGadget},
     uint8::UInt8,
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_relations::{
+    lc,
+    r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError, Variable},
+};
 use nimiq_primitives::policy::Policy;
 use nimiq_zkp_primitives::pedersen::pedersen_parameters_mnt4;
 use rand::Rng;
@@ -172,7 +175,7 @@ impl ConstraintSynthesizer<MNT4Fq> for PKTreeNodeCircuit {
 
         // Get merger vk.
         let child_vk = vk_helper.get_and_verify_vk(
-            cs,
+            cs.clone(),
             CircuitId::PkTree(self.tree_level + 1),
             &pedersen_generators,
         )?;
@@ -214,6 +217,10 @@ impl ConstraintSynthesizer<MNT4Fq> for PKTreeNodeCircuit {
             &r_proof_var,
         )?
         .enforce_equal(&Boolean::constant(true))?;
+
+        for i in 0..cs.num_instance_variables() {
+            cs.enforce_constraint(lc!() + Variable::Instance(i), lc!(), lc!())?;
+        }
 
         Ok(())
     }

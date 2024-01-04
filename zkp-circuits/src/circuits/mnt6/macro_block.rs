@@ -9,7 +9,10 @@ use ark_mnt6_753::{
     Fq as MNT6Fq, G1Affine, G2Affine, G2Projective, MNT6_753,
 };
 use ark_r1cs_std::prelude::{AllocVar, Boolean, EqGadget, UInt32, UInt8};
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_relations::{
+    lc,
+    r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError, Variable},
+};
 use nimiq_block::MacroBlock;
 use nimiq_primitives::policy::Policy;
 use nimiq_zkp_primitives::pedersen_parameters_mnt6;
@@ -237,8 +240,12 @@ impl ConstraintSynthesizer<MNT6Fq> for MacroBlockCircuit {
 
         // Verifying that the block is valid.
         final_block_var
-            .verify_signature(cs, &agg_pk_var)?
+            .verify_signature(cs.clone(), &agg_pk_var)?
             .enforce_equal(&Boolean::constant(true))?;
+
+        for i in 0..cs.num_instance_variables() {
+            cs.enforce_constraint(lc!() + Variable::Instance(i), lc!(), lc!())?;
+        }
 
         Ok(())
     }

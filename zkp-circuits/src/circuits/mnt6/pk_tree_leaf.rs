@@ -4,7 +4,10 @@ use ark_r1cs_std::{
     prelude::{AllocVar, CondSelectGadget, CurveVar, EqGadget},
     uint8::UInt8,
 };
-use ark_relations::r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError};
+use ark_relations::{
+    lc,
+    r1cs::{ConstraintSynthesizer, ConstraintSystemRef, SynthesisError, Variable},
+};
 use nimiq_primitives::{policy::Policy, slots_allocation::PK_TREE_BREADTH};
 use nimiq_zkp_primitives::pedersen_parameters_mnt6;
 use rand::{distributions::Standard, prelude::Distribution};
@@ -119,9 +122,13 @@ impl ConstraintSynthesizer<MNT6Fq> for PKTreeLeafCircuit {
 
         let pedersen_hash =
             DefaultPedersenHashGadget::evaluate(&agg_pk_bytes, &pedersen_generators_var)?;
-        let pedersen_bytes = pedersen_hash.serialize_compressed(cs)?;
+        let pedersen_bytes = pedersen_hash.serialize_compressed(cs.clone())?;
 
         agg_pk_commitment_bytes.enforce_equal(&pedersen_bytes)?;
+
+        for i in 0..cs.num_instance_variables() {
+            cs.enforce_constraint(lc!() + Variable::Instance(i), lc!(), lc!())?;
+        }
 
         Ok(())
     }
