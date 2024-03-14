@@ -21,13 +21,6 @@ setInterval(() => {
     global.performance.clearResourceTimings();
 }, 300 * 1000);
 
-// Prevent NodeJS exiting on an uncaught exception that we currently expect,
-// until it is fixed in upstream libp2p websocket-websys transport.
-process.on('uncaughtException', error => {
-    if (error.message.includes('closure invoked recursively')) return;
-    throw error;
-});
-
 // Defined both here and in main thread exports.js
 Comlink.transferHandlers.set('function', {
     canHandle: (_obj) => false, // Cannot send functions to main thread
