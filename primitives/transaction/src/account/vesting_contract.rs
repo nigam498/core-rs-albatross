@@ -1,6 +1,6 @@
 use log::error;
 use nimiq_keys::Address;
-use nimiq_primitives::{account::AccountType, coin::Coin};
+use nimiq_primitives::{account::AccountType, coin::CoinBe};
 use nimiq_serde::{Deserialize, Serialize};
 
 use crate::{
@@ -76,8 +76,8 @@ pub struct CreationTransactionData {
     pub start_time: u64,
     #[serde(with = "nimiq_serde::fixint::be")]
     pub time_step: u64,
-    pub step_amount: Coin,
-    pub total_amount: Coin,
+    pub step_amount: CoinBe,
+    pub total_amount: CoinBe,
 }
 
 impl CreationTransactionData {
@@ -92,8 +92,8 @@ impl CreationTransactionData {
                 owner,
                 start_time: 0,
                 time_step: u64::from_be_bytes(time_step),
-                step_amount: transaction.value,
-                total_amount: transaction.value,
+                step_amount: transaction.value.into(),
+                total_amount: transaction.value.into(),
             })
         } else if transaction.recipient_data.len() == Address::SIZE + 24 {
             let (start_time, left_over) = <[u8; 8]>::deserialize_take(left_over)?;
@@ -104,7 +104,7 @@ impl CreationTransactionData {
                 start_time: u64::from_be_bytes(start_time),
                 time_step: u64::from_be_bytes(time_step),
                 step_amount,
-                total_amount: transaction.value,
+                total_amount: transaction.value.into(),
             })
         } else if transaction.recipient_data.len() == Address::SIZE + 32 {
             // Create a vesting account with some instantly vested funds or additional funds considered.
