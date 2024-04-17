@@ -273,11 +273,7 @@ mod serialization {
             S: Serializer,
         {
             if self.0 <= Coin::MAX_SAFE_VALUE {
-                if serializer.is_human_readable() {
-                    self.0.serialize(serializer)
-                } else {
-                    nimiq_serde::fixint::be::serialize(&self.0, serializer)
-                }
+                self.0.serialize(serializer)
             } else {
                 Err(S::Error::custom("Overflow detected for a Coin value"))
             }
@@ -289,11 +285,7 @@ mod serialization {
         where
             D: Deserializer<'de>,
         {
-            let value: u64 = if deserializer.is_human_readable() {
-                Deserialize::deserialize(deserializer)?
-            } else {
-                nimiq_serde::fixint::be::deserialize(deserializer)?
-            };
+            let value: u64 = Deserialize::deserialize(deserializer)?;
             Coin::try_from(value).map_err(|_| {
                 D::Error::invalid_value(
                     Unexpected::Unsigned(value),
