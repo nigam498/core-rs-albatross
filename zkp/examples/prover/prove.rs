@@ -7,10 +7,10 @@ use std::{
 
 use ark_groth16::Proof;
 use ark_serialize::CanonicalSerialize;
-use log::metadata::LevelFilter;
+use log::{info, metadata::LevelFilter};
 use nimiq_genesis::{NetworkId, NetworkInfo};
 use nimiq_log::TargetsExt;
-use nimiq_primitives::policy::{Policy, TEST_POLICY};
+use nimiq_primitives::policy::Policy;
 use nimiq_test_utils::{
     block_production::TemporaryBlockProducer, blockchain_with_rng::produce_macro_blocks_with_rng,
     test_rng::test_rng,
@@ -33,7 +33,7 @@ fn initialize() {
     let genesis_block = network_info.genesis_block();
 
     // Run tests with different policy values:
-    let mut policy_config = TEST_POLICY;
+    let mut policy_config = Policy::default();
     // The genesis block number must be set accordingly
     policy_config.genesis_block_number = genesis_block.block_number();
 
@@ -65,6 +65,12 @@ fn main() {
     let mut genesis_data = None;
     let mut proof = Proof::default();
 
+    info!(
+        "Generating blocks: {} * {}",
+        number_epochs,
+        Policy::blocks_per_epoch()
+    );
+
     let block_producer = TemporaryBlockProducer::new();
     produce_macro_blocks_with_rng(
         &block_producer.producer,
@@ -74,6 +80,7 @@ fn main() {
     );
 
     let offset = Policy::genesis_block_number();
+    let path = &PathBuf::from(".zkp_example");
 
     for i in 0..number_epochs {
         // Get random parameters.
@@ -87,8 +94,8 @@ fn main() {
             .unwrap()
             .unwrap_macro();
 
-        log::error!("Block 1 {:?}", prev_block);
-        log::error!("Block 2 {:?}", final_block);
+        info!("Block 1 {:?}", prev_block);
+        info!("Block 2 {:?}", final_block);
 
         // Create genesis data.
         if i == 0 {
@@ -106,7 +113,7 @@ fn main() {
             genesis_data.clone(),
             true,
             true,
-            &PathBuf::new(), // use the current directory
+            path,
         )
         .unwrap();
 
