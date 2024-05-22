@@ -3,9 +3,9 @@ extern crate log;
 
 use std::{
     cmp::{Ord, Ordering},
+    collections::HashSet,
     convert::TryFrom,
-    io,
-    io::Write,
+    io::{self, Write},
     sync::Arc,
 };
 
@@ -23,7 +23,12 @@ use nimiq_utils::merkle::Blake2bMerkleProof;
 pub use signature_proof::*;
 use thiserror::Error;
 
-use crate::account::AccountTransactionVerification;
+use crate::account::{
+    htlc_contract::{CreationTransactionData as HtlcCreationData, OutgoingHTLCTransactionProof},
+    staking_contract::IncomingStakingTransactionData,
+    vesting_contract::CreationTransactionData as VestingCreationData,
+    AccountTransactionVerification,
+};
 
 mod equivocation_locator;
 
@@ -431,6 +436,133 @@ impl Transaction {
 
     pub fn recipient(&self) -> &Address {
         &self.recipient
+    }
+
+    pub fn related_addresses(&self) -> HashSet<Address> {
+        let mut set = HashSet::new();
+        set.insert(self.sender.clone());
+        set.insert(self.recipient.clone());
+
+        if let Ok(proof) = SignatureProof::deserialize_from_vec(&self.proof) {
+            set.insert(proof.compute_signer());
+        }
+
+        if self.recipient_type == AccountType::Vesting {
+            if let Ok(contract_data) =
+                VestingCreationData::deserialize_from_vec(&self.recipient_data)
+            {
+                set.insert(contract_data.owner);
+            }
+        }
+
+        if self.recipient_type == AccountType::HTLC {
+            if let Ok(contract_data) = HtlcCreationData::deserialize_from_vec(&self.recipient_data)
+            {
+                set.insert(contract_data.sender);
+                set.insert(contract_data.recipient);
+            }
+        }
+
+        if self.sender_type == AccountType::HTLC {
+            if let Ok(proof) = OutgoingHTLCTransactionProof::deserialize_from_vec(&self.proof) {
+                match proof {
+                    OutgoingHTLCTransactionProof::RegularTransfer {
+                        signature_proof, ..
+                    } => {
+                        set.insert(signature_proof.compute_signer());
+                    }
+                    OutgoingHTLCTransactionProof::EarlyResolve {
+                        signature_proof_recipient,
+                        signature_proof_sender,
+                    } => {
+                        set.insert(signature_proof_recipient.compute_signer());
+                        set.insert(signature_proof_sender.compute_signer());
+                    }
+                    OutgoingHTLCTransactionProof::TimeoutResolve {
+                        signature_proof_sender,
+                    } => {
+                        set.insert(signature_proof_sender.compute_signer());
+                    }
+                }
+            }
+        }
+
+        if self.recipient_type == AccountType::Staking {
+            if let Ok(contract_data) =
+                IncomingStakingTransactionData::deserialize_from_vec(&self.recipient_data)
+            {
+                match contract_data {
+                    IncomingStakingTransactionData::CreateValidator {
+                        signing_key,
+                        reward_address,
+                        proof,
+                        ..
+                    } => {
+                        set.insert(Address::from(&signing_key));
+                        set.insert(reward_address);
+                        set.insert(proof.compute_signer());
+                    }
+                    IncomingStakingTransactionData::UpdateValidator {
+                        new_signing_key,
+                        new_reward_address,
+                        proof,
+                        ..
+                    } => {
+                        if let Some(new_signing_key) = new_signing_key {
+                            set.insert(Address::from(&new_signing_key));
+                        }
+                        if let Some(new_reward_address) = new_reward_address {
+                            set.insert(new_reward_address);
+                        }
+                        set.insert(proof.compute_signer());
+                    }
+                    IncomingStakingTransactionData::DeactivateValidator {
+                        validator_address,
+                        proof,
+                    } => {
+                        set.insert(validator_address);
+                        set.insert(proof.compute_signer());
+                    }
+                    IncomingStakingTransactionData::ReactivateValidator {
+                        validator_address,
+                        proof,
+                    } => {
+                        set.insert(validator_address);
+                        set.insert(proof.compute_signer());
+                    }
+                    IncomingStakingTransactionData::RetireValidator { proof } => {
+                        set.insert(proof.compute_signer());
+                    }
+                    IncomingStakingTransactionData::CreateStaker { delegation, proof } => {
+                        if let Some(delegation) = delegation {
+                            set.insert(delegation);
+                        }
+                        set.insert(proof.compute_signer());
+                    }
+                    IncomingStakingTransactionData::AddStake { staker_address } => {
+                        set.insert(staker_address);
+                    }
+                    IncomingStakingTransactionData::UpdateStaker {
+                        new_delegation,
+                        proof,
+                        ..
+                    } => {
+                        if let Some(new_delegation) = new_delegation {
+                            set.insert(new_delegation);
+                        }
+                        set.insert(proof.compute_signer());
+                    }
+                    IncomingStakingTransactionData::SetActiveStake { proof, .. } => {
+                        set.insert(proof.compute_signer());
+                    }
+                    IncomingStakingTransactionData::RetireStake { proof, .. } => {
+                        set.insert(proof.compute_signer());
+                    }
+                }
+            }
+        }
+
+        set
     }
 }
 

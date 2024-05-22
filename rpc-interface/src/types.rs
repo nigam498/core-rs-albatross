@@ -190,27 +190,36 @@ impl Block {
                     vec![],
                 )
                 .into_iter()
-                .map(|tx| ExecutedTransaction {
-                    transaction: Transaction {
-                        hash: tx.tx_hash().into(),
-                        block_number: Some(macro_block.block_number()),
-                        timestamp: Some(macro_block.timestamp()),
-                        confirmations: cur_block_height.map(|h| h - macro_block.block_number()),
-                        size: tx.serialized_size(),
-                        from: Policy::COINBASE_ADDRESS,
-                        from_type: 0,
-                        to: tx.unwrap_reward().reward_address.clone(),
-                        to_type: 0,
-                        value: tx.unwrap_reward().value,
-                        fee: Coin::ZERO,
-                        sender_data: vec![],
-                        recipient_data: vec![],
-                        flags: 0,
-                        validity_start_height: macro_block.block_number(),
-                        proof: vec![],
-                        network_id: macro_block.network() as u8,
-                    },
-                    execution_result: true,
+                .map(|tx| {
+                    let reward = tx.unwrap_reward();
+                    let mut related_addresses =
+                        vec![Policy::COINBASE_ADDRESS, reward.reward_address.clone()];
+                    if reward.validator_address != reward.reward_address {
+                        related_addresses.push(reward.validator_address.clone());
+                    }
+                    ExecutedTransaction {
+                        transaction: Transaction {
+                            hash: tx.tx_hash().into(),
+                            block_number: Some(macro_block.block_number()),
+                            timestamp: Some(macro_block.timestamp()),
+                            confirmations: cur_block_height.map(|h| h - macro_block.block_number()),
+                            size: tx.serialized_size(),
+                            related_addresses,
+                            from: Policy::COINBASE_ADDRESS,
+                            from_type: 0,
+                            to: reward.reward_address.clone(),
+                            to_type: 0,
+                            value: reward.value,
+                            fee: Coin::ZERO,
+                            sender_data: vec![],
+                            recipient_data: vec![],
+                            flags: 0,
+                            validity_start_height: macro_block.block_number(),
+                            proof: vec![],
+                            network_id: macro_block.network() as u8,
+                        },
+                        execution_result: true,
+                    }
                 })
                 .collect()
             });
@@ -555,6 +564,7 @@ pub struct Transaction {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub confirmations: Option<u32>,
     pub size: usize,
+    pub related_addresses: Vec<Address>,
 
     pub from: Address,
     pub from_type: u8,
@@ -607,6 +617,7 @@ impl Transaction {
                 None => None,
             },
             size: transaction.serialized_size(),
+            related_addresses: transaction.related_addresses().into_iter().collect(),
             from: transaction.sender,
             from_type: transaction.sender_type as u8,
             to: transaction.recipient,
