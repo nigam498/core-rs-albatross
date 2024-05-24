@@ -18,6 +18,8 @@ use nimiq_test_utils::{
 use nimiq_zkp::prove::prove;
 use tracing_subscriber::{filter::Targets, prelude::*};
 
+const DEFAULT_EXAMPLE_PATH: &str = ".zkp_example";
+
 fn initialize() {
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer().with_writer(io::stderr))
@@ -80,7 +82,7 @@ fn main() {
     );
 
     let offset = Policy::genesis_block_number();
-    let path = &PathBuf::from(".zkp_example");
+    let path = &PathBuf::from(DEFAULT_EXAMPLE_PATH);
 
     for i in 0..number_epochs {
         // Get random parameters.
@@ -117,12 +119,14 @@ fn main() {
         )
         .unwrap();
 
+        let proofs_path = format!("{}/{}", DEFAULT_EXAMPLE_PATH, "proofs");
+
         // Save proof to file.
-        if !Path::new("proofs/").is_dir() {
+        if !Path::new(&proofs_path).is_dir() {
             DirBuilder::new().create("proofs/").unwrap();
         }
 
-        let mut file = File::create(format!("proofs/proof_epoch_{}.bin", i + 1)).unwrap();
+        let mut file = File::create(format!("{}/proof_epoch_{}.bin", proofs_path, i + 1)).unwrap();
 
         proof.serialize_uncompressed(&mut file).unwrap();
 
