@@ -175,17 +175,23 @@ impl<TNetwork: Network> LightMacroSync<TNetwork> {
             let peer_head_upper_bound = epoch_ids
                 .checkpoint
                 .as_ref()
-                .map(|checkpoint| checkpoint.block_number)
+                .map(|checkpoint| Some(checkpoint.block_number))
                 .unwrap_or_else(|| {
                     if epoch_ids.checkpoint_epoch_number() == 0 {
-                        return 0;
+                        return Some(0);
                     }
-                    // FIXME: Ban peer if it sends an invalid epoch_number instead of panicking.
                     Policy::first_block_of(epoch_ids.checkpoint_epoch_number() as u32)
-                        .expect("The supplied epoch number is out of bounds")
-                })
-                + Policy::blocks_per_batch()
-                - 1;
+                });
+
+            // Disconnect the peer if the bound could not be determined.
+            let peer_head_upper_bound = match peer_head_upper_bound {
+                Some(block_number) => block_number + Policy::blocks_per_batch() - 1,
+                None => {
+                    log::debug!(peer_id = %epoch_ids.sender, "Peer provided invalid checkpoint block number");
+                    self.disconnect_peer(epoch_ids.sender, CloseReason::MaliciousPeer);
+                    continue;
+                }
+            };
 
             // If the peer didn't find any of our locators, we are done with it and emit it.
             if !epoch_ids.locator_found {
