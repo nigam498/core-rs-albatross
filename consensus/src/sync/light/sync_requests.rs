@@ -70,11 +70,13 @@ impl<TNetwork: Network> LightMacroSync<TNetwork> {
             (locators, election_head.epoch_number())
         };
 
+        let max_epochs = 1000; // TODO: Use other value
+
         let result = Self::request_macro_chain(
             Arc::clone(&network),
             peer_id,
             locators,
-            1000, // TODO: Use other value
+            max_epochs,
         )
         .await;
 
@@ -90,6 +92,17 @@ impl<TNetwork: Network> LightMacroSync<TNetwork> {
                 })
             }
             Ok(Ok(macro_chain)) => {
+                // Validate that the maximum number of epochs is not exceeded.
+                if macro_chain.epochs.len() > max_epochs as usize {
+                    log::warn!(
+                        num_epochs = macro_chain.epochs.len(),
+                        %peer_id,
+                        "Request macro chain failed: too many epochs returned"
+                    );
+                    network.disconnect_peer(peer_id, CloseReason::MaliciousPeer).await;
+                    return None;
+                }
+
                 // Sanity-check checkpoint block number:
                 //  * is in checkpoint epoch
                 //  * is a non-election macro block
@@ -100,9 +113,10 @@ impl<TNetwork: Network> LightMacroSync<TNetwork> {
                         || Policy::is_election_block_at(checkpoint.block_number)
                     {
                         // Peer provided an invalid checkpoint block number, close connection.
-                        log::error!(
+                        log::warn!(
                             block_number = checkpoint.block_number,
-                            checkpoint_epoch = checkpoint_epoch,
+                            checkpoint_epoch,
+                            %peer_id,
                             "Request macro chain failed: invalid checkpoint"
                         );
                         network
@@ -129,7 +143,7 @@ impl<TNetwork: Network> LightMacroSync<TNetwork> {
                 })
             }
             Err(error) => {
-                log::error!(%error, "Request macro chain failed");
+                log::warn!(%error, %peer_id, "Request macro chain failed");
                 network.disconnect_peer(peer_id, CloseReason::Error).await;
                 None
             }
