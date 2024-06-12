@@ -257,7 +257,7 @@ pub struct PeerContactBook {
 
 impl PeerContactBook {
     /// If a peer's age exceeds this value in seconds, it is removed (30 minutes)
-    pub const MAX_PEER_AGE: u64 = 30 * 60;
+    pub const MAX_PEER_AGE: u64 = 10;
 
     /// Creates a new `PeerContactBook` given our own peer contact information.
     pub fn new(
