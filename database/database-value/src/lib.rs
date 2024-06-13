@@ -1,14 +1,18 @@
-use std::{borrow::Cow, ffi::CStr, io, mem, slice};
+use std::{
+    borrow::Cow,
+    ffi::CStr,
+    io::{self, Read},
+    mem,
+    slice,
+};
 
 pub trait IntoDatabaseValue {
     fn database_byte_size(&self) -> usize;
-    fn copy_into_database(&self, bytes: &mut [u8]);
+    fn copy_into_database(&self, bytes: &mut [u8]) -> io::Result<()>;
 }
 
-pub trait FromDatabaseValue {
-    fn copy_from_database(bytes: &[u8]) -> io::Result<Self>
-    where
-        Self: Sized;
+pub trait FromDatabaseValue: Sized {
+    fn copy_from_database(bytes: &[u8]) -> io::Result<Self>;
 }
 
 pub trait AsDatabaseBytes {
@@ -21,8 +25,15 @@ impl IntoDatabaseValue for [u8] {
         self.len()
     }
 
-    fn copy_into_database(&self, bytes: &mut [u8]) {
-        bytes.copy_from_slice(self);
+    fn copy_into_database(&self, bytes: &mut [u8]) -> io::Result<()> {
+        if bytes.len() < self.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Insufficient space in buffer",
+            ));
+        }
+        bytes[..self.len()].copy_from_slice(self);
+        Ok(())
     }
 }
 
@@ -31,50 +42,54 @@ impl IntoDatabaseValue for str {
         self.len()
     }
 
-    fn copy_into_database(&self, bytes: &mut [u8]) {
-        bytes.copy_from_slice(self.as_bytes());
+    fn copy_into_database(&self, bytes: &mut [u8]) -> io::Result<()> {
+        if bytes.len() < self.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Insufficient space in buffer",
+            ));
+        }
+        bytes[..self.len()].copy_from_slice(self.as_bytes());
+        Ok(())
     }
 }
 
 impl FromDatabaseValue for String {
-    fn copy_from_database(bytes: &[u8]) -> io::Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(String::from_utf8(bytes.to_vec()).unwrap())
+    fn copy_from_database(bytes: &[u8]) -> io::Result<Self> {
+        Ok(String::from_utf8(bytes.to_vec())?)
     }
 }
 
-impl FromDatabaseValue for u32 {
-    fn copy_from_database(bytes: &[u8]) -> io::Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(u32::from_ne_bytes(bytes.try_into().expect("mismatch size")))
-    }
+macro_rules! impl_from_database_value_for_int {
+    ($type:ty) => {
+        impl FromDatabaseValue for $type {
+            fn copy_from_database(bytes: &[u8]) -> io::Result<Self> {
+                if bytes.len() != mem::size_of::<$type>() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Incorrect byte size for type",
+                    ));
+                }
+                let mut array = [0; mem::size_of::<$type>()];
+                array.copy_from_slice(bytes);
+                Ok(Self::from_ne_bytes(array))
+            }
+        }
+    };
 }
 
-impl FromDatabaseValue for u64 {
-    fn copy_from_database(bytes: &[u8]) -> io::Result<Self>
-    where
-        Self: Sized,
-    {
-        Ok(u64::from_ne_bytes(bytes.try_into().expect("mismatch size")))
-    }
-}
+impl_from_database_value_for_int!(u32);
+impl_from_database_value_for_int!(u64);
 
 impl FromDatabaseValue for Vec<u8> {
-    fn copy_from_database(bytes: &[u8]) -> io::Result<Self>
-    where
-        Self: Sized,
-    {
+    fn copy_from_database(bytes: &[u8]) -> io::Result<Self> {
         Ok(bytes.to_vec())
     }
 }
 
 impl AsDatabaseBytes for Vec<u8> {
     fn as_database_bytes(&self) -> Cow<[u8]> {
-        Cow::Borrowed(&self[..])
+        Cow::Borrowed(self)
     }
 }
 
@@ -90,26 +105,25 @@ impl AsDatabaseBytes for CStr {
     }
 }
 
-macro_rules! as_db_bytes {
-    ($typ:ident) => {
-        impl AsDatabaseBytes for $typ {
+macro_rules! impl_as_database_bytes_for_primitive {
+    ($type:ty) => {
+        impl AsDatabaseBytes for $type {
             fn as_database_bytes(&self) -> Cow<[u8]> {
                 unsafe {
-                    #[allow(clippy::size_of_in_element_count)]
                     Cow::Borrowed(slice::from_raw_parts(
-                        self as *const $typ as *const u8,
-                        mem::size_of::<$typ>(),
+                        self as *const $type as *const u8,
+                        mem::size_of::<$type>(),
                     ))
                 }
             }
         }
-        impl AsDatabaseBytes for [$typ] {
+
+        impl AsDatabaseBytes for [$type] {
             fn as_database_bytes(&self) -> Cow<[u8]> {
                 unsafe {
-                    #[allow(clippy::size_of_in_element_count)]
                     Cow::Borrowed(slice::from_raw_parts(
                         self.as_ptr() as *const u8,
-                        std::mem::size_of_val(self),
+                        self.len() * mem::size_of::<$type>(),
                     ))
                 }
             }
@@ -117,13 +131,13 @@ macro_rules! as_db_bytes {
     };
 }
 
-as_db_bytes!(u8);
-as_db_bytes!(u16);
-as_db_bytes!(i16);
-as_db_bytes!(u32);
-as_db_bytes!(i32);
-as_db_bytes!(u64);
-as_db_bytes!(i64);
-as_db_bytes!(f32);
-as_db_bytes!(f64);
-as_db_bytes!(char);
+impl_as_database_bytes_for_primitive!(u8);
+impl_as_database_bytes_for_primitive!(u16);
+impl_as_database_bytes_for_primitive!(i16);
+impl_as_database_bytes_for_primitive!(i32);
+impl_as_database_bytes_for_primitive!(u64);
+impl_as_database_bytes_for_primitive!(i64);
+impl_as_database_bytes_for_primitive!(f32);
+impl_as_database_bytes_for_primitive!(f64);
+impl_as_database_bytes_for_primitive!(char);
+
